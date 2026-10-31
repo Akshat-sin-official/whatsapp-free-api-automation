@@ -1,0 +1,52 @@
+# Environment files
+.env
+*.env
+!.env.example
+
+# Binaries and build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+build/
+bin/
+evolution-go
+
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Database & WhatsApp Session storage
+dbdata/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Logs
+logs/
+*.log
+
+# Test & coverage
+coverage.out
+coverage.html
+*.test
+
+# IDE and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
