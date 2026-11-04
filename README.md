@@ -157,3 +157,4 @@ This platform uses unofficial WhatsApp Web companion multi-device protocols via 
 - Built on the open-source **Evolution Go** project by the [Evolution Foundation](https://evolutionfoundation.com.br).
 - Licensed under the **Apache License 2.0**.
 - WhatsApp is a trademark of Meta Platforms, Inc. This project is not affiliated with, funded, or endorsed by Meta or WhatsApp.
+
