@@ -24,7 +24,7 @@ export interface LicenseStatus {
 }
 
 const DEFAULT_GLOBAL_API_KEY = '429683C4C977415CAAFCCE10F7D57E11'
-const DEFAULT_API_URL = import.meta.env.VITE_API_URL || 'http://146.190.11.227:8080'
+const DEFAULT_API_URL = import.meta.env.VITE_API_URL || 'https://nakshtraventures.in/wa-api'
 
 export const getApiBaseUrl = () => {
   return localStorage.getItem('WA_API_URL') || DEFAULT_API_URL
