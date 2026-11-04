@@ -11,7 +11,7 @@
 *.dylib
 build/
 bin/
-/evolution-goo/evolution-go
+evolution-go
 
 # Node / Frontend
 node_modules/

@@ -20,7 +20,7 @@ import {
   ChevronRight,
   LogOut
 } from 'lucide-react'
-import { api, WhatsAppInstance, LicenseStatus, getApiKey, setApiKey } from './api'
+import { api, WhatsAppInstance, LicenseStatus, getApiKey, setApiKey, getApiBaseUrl, setApiBaseUrl } from './api'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'instances' | 'chat' | 'automations' | 'contacts' | 'settings'>('instances')
@@ -28,6 +28,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [license, setLicense] = useState<LicenseStatus | null>(null)
   const [apiKeyInput, setApiKeyInput] = useState(getApiKey())
+  const [apiUrlInput, setApiUrlInput] = useState(getApiBaseUrl())
 
   // Create Instance State
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -609,9 +610,25 @@ export default function App() {
           {activeTab === 'settings' && (
             <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-xl shadow-xs space-y-6">
               <div>
-                <h3 className="text-xl font-bold text-slate-900">API Configuration</h3>
+                <h3 className="text-xl font-bold text-slate-900">Platform & API Configuration</h3>
                 <p className="text-sm text-slate-500">
-                  Manage global API key credentials for communicating with the backend.
+                  Configure your backend server URL and API credentials.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                  Backend Server URL
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. http://146.190.11.227:8080"
+                  value={apiUrlInput}
+                  onChange={(e) => setApiUrlInput(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <p className="text-xs text-slate-400 mt-1">
+                  Default: <span className="font-mono">http://146.190.11.227:8080</span> (Your DigitalOcean droplet)
                 </p>
               </div>
 
@@ -629,13 +646,14 @@ export default function App() {
 
               <button
                 onClick={() => {
-                  setApiKey(apiKeyInput)
-                  alert('API Key updated successfully!')
+                  setApiKey(apiKeyInput.trim())
+                  setApiBaseUrl(apiUrlInput.trim())
+                  alert('Settings updated successfully!')
                   fetchStatusAndInstances()
                 }}
                 className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm py-2.5 px-4 rounded-xl shadow-sm transition"
               >
-                Save Credentials
+                Save Settings
               </button>
             </div>
           )}
