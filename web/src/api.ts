@@ -9,6 +9,7 @@ export interface WhatsAppInstance {
   qrcode?: string
   expiration?: number
   disconnect_reason?: string
+  os_name?: string
   createdAt?: string
 }
 

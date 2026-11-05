@@ -18,17 +18,33 @@ import {
   ExternalLink,
   ShieldCheck,
   ChevronRight,
-  LogOut
+  LogOut,
+  KeyRound,
+  User,
+  Building2,
+  Lock,
+  ChevronDown,
+  Layers
 } from 'lucide-react'
 import { api, WhatsAppInstance, LicenseStatus, getApiKey, setApiKey, getApiBaseUrl, setApiBaseUrl } from './api'
+import { auth } from './auth'
+import { LoginScreen } from './components/LoginScreen'
+import { QuickMessenger } from './components/QuickMessenger'
+import { RuleAutomations } from './components/RuleAutomations'
+import { ChangePasswordModal } from './components/ChangePasswordModal'
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => auth.isAuthenticated())
   const [activeTab, setActiveTab] = useState<'instances' | 'chat' | 'automations' | 'contacts' | 'settings'>('instances')
   const [instances, setInstances] = useState<WhatsAppInstance[]>([])
   const [loading, setLoading] = useState(false)
   const [license, setLicense] = useState<LicenseStatus | null>(null)
   const [apiKeyInput, setApiKeyInput] = useState(getApiKey())
   const [apiUrlInput, setApiUrlInput] = useState(getApiBaseUrl())
+
+  // User Profile & Password Modal
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
 
   // Create Instance State
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -41,28 +57,17 @@ export default function App() {
   const [qrLoading, setQrLoading] = useState(false)
   const [qrConnected, setQrConnected] = useState(false)
 
-  // Send Message State
+  // Quick Messenger active token
   const [selectedInstanceToken, setSelectedInstanceToken] = useState<string>('')
-  const [targetNumber, setTargetNumber] = useState('')
-  const [messageText, setMessageText] = useState('')
-  const [sendingMessage, setSendingMessage] = useState(false)
-  const [sendResult, setSendResult] = useState<{ success: boolean; msg: string } | null>(null)
 
-  // Quick Automation rules state
-  const [automations, setAutomations] = useState([
-    { id: '1', keyword: 'PRICE', reply: 'Hello! Our pricing starts at $29/mo. Let us know if you want a custom quote.', enabled: true },
-    { id: '2', keyword: 'SUPPORT', reply: 'Hi there! An agent will respond within 15 minutes. Please describe your issue.', enabled: true }
-  ])
-  const [newKeyword, setNewKeyword] = useState('')
-  const [newReply, setNewReply] = useState('')
-
-  // Contacts state
+  // Contacts CRM State
   const [contacts, setContacts] = useState([
-    { id: '1', name: 'John Doe', phone: '+1234567890', tag: 'VIP Client', optIn: true },
-    { id: '2', name: 'Acme Corp Sales', phone: '+1987654321', tag: 'Prospect', optIn: true }
+    { id: '1', name: 'Rahul Sharma', phone: '+91 98765 43210', tag: 'NBFC Borrower', status: 'Active Loan' },
+    { id: '2', name: 'Priya Patel', phone: '+91 91234 56789', tag: 'KYC Verified', status: 'Disbursed' },
+    { id: '3', name: 'Vikram Singh', phone: '+91 99887 76655', tag: 'Collections', status: 'Payment Due' },
+    { id: '4', name: 'Ananya Verma', phone: '+91 98111 22334', tag: 'VIP Partner', status: 'Enterprise' }
   ])
-  const [newContactName, setNewContactName] = useState('')
-  const [newContactPhone, setNewContactPhone] = useState('')
+  const [contactSearch, setContactSearch] = useState('')
 
   const fetchStatusAndInstances = async () => {
     try {
@@ -82,12 +87,13 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!isAuthenticated) return
     fetchStatusAndInstances()
     const timer = setInterval(fetchStatusAndInstances, 10000)
     return () => clearInterval(timer)
-  }, [])
+  }, [isAuthenticated])
 
-  // QR polling
+  // QR Code Polling
   useEffect(() => {
     if (!selectedInstanceForQr) return
 
@@ -116,6 +122,11 @@ export default function App() {
     }
   }, [selectedInstanceForQr])
 
+  // If unauthenticated, gate whole app behind LoginScreen
+  if (!isAuthenticated) {
+    return <LoginScreen onLoginSuccess={() => setIsAuthenticated(true)} />
+  }
+
   const handleCreateInstance = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newInstanceName.trim()) return
@@ -125,12 +136,12 @@ export default function App() {
       setShowCreateModal(false)
       setNewInstanceName('')
       await fetchStatusAndInstances()
-      // Open QR immediately
+      // Open QR modal immediately
       setSelectedInstanceForQr(created)
       setQrConnected(false)
       setQrCodeData(created.qrcode || '')
     } catch (err: any) {
-      alert('Failed to create instance: ' + (err.response?.data?.message || err.message))
+      alert('Failed to create instance: ' + (err.response?.data?.error || err.message))
     } finally {
       setCreating(false)
     }
@@ -146,124 +157,142 @@ export default function App() {
     }
   }
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedInstanceToken || !targetNumber || !messageText) return
-    try {
-      setSendingMessage(true)
-      setSendResult(null)
-      await api.sendTextMessage(selectedInstanceToken, {
-        number: targetNumber.replace(/\D/g, ''),
-        text: messageText
-      })
-      setSendResult({ success: true, msg: 'Message dispatched successfully!' })
-      setMessageText('')
-    } catch (e: any) {
-      setSendResult({ success: false, msg: e.response?.data?.message || e.message })
-    } finally {
-      setSendingMessage(false)
-    }
+  const handleLogout = () => {
+    auth.logout()
+    setIsAuthenticated(false)
   }
 
+  const filteredContacts = contacts.filter(
+    (c) =>
+      c.name.toLowerCase().includes(contactSearch.toLowerCase()) ||
+      c.phone.includes(contactSearch) ||
+      c.tag.toLowerCase().includes(contactSearch.toLowerCase())
+  )
+
+  const connectedCount = instances.filter((i) => i.connected).length
+
   return (
-    <div className="min-h-screen flex bg-slate-50 text-slate-800">
-      {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between p-4 border-r border-slate-800 shadow-xl">
+    <div className="min-h-screen flex bg-slate-50 text-slate-800 font-['Plus_Jakarta_Sans',sans-serif]">
+      {/* SIDEBAR NAVIGATION */}
+      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between p-4 border-r border-slate-800 shadow-xl shrink-0">
         <div>
+          {/* Brand Header */}
           <div className="flex items-center gap-3 px-3 py-4 mb-6 border-b border-slate-800">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
               <MessageSquare className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="font-bold text-white text-base leading-tight">WhatsFlow</h1>
-              <p className="text-xs text-emerald-400 font-medium">Automation & CRM</p>
+              <h1 className="font-bold text-white text-base leading-tight">WhatsFlow Pro</h1>
+              <p className="text-[11px] text-emerald-400 font-medium">Enterprise Hub</p>
             </div>
           </div>
 
-          <nav className="space-y-1">
+          {/* Navigation Links */}
+          <nav className="space-y-1.5">
             <button
               onClick={() => setActiveTab('instances')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
                 activeTab === 'instances'
-                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
                   : 'hover:bg-slate-800 hover:text-white text-slate-400'
               }`}
             >
               <Smartphone className="w-4 h-4" />
-              Instances
-              <span className="ml-auto bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full text-xs">
-                {instances.length}
+              <span>Instances</span>
+              <span className="ml-auto bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full text-[10px] font-mono">
+                {connectedCount}/{instances.length}
               </span>
             </button>
 
             <button
               onClick={() => setActiveTab('chat')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
                 activeTab === 'chat'
-                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
                   : 'hover:bg-slate-800 hover:text-white text-slate-400'
               }`}
             >
               <Send className="w-4 h-4" />
-              Messenger
+              <span>Quick Messenger</span>
+              <span className="ml-auto bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                PRO
+              </span>
             </button>
 
             <button
               onClick={() => setActiveTab('automations')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
                 activeTab === 'automations'
-                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
                   : 'hover:bg-slate-800 hover:text-white text-slate-400'
               }`}
             >
               <Bot className="w-4 h-4" />
-              Automations
+              <span>Automations</span>
+              <span className="ml-auto bg-teal-500/20 text-teal-300 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                TENANT
+              </span>
             </button>
 
             <button
               onClick={() => setActiveTab('contacts')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
                 activeTab === 'contacts'
-                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
                   : 'hover:bg-slate-800 hover:text-white text-slate-400'
               }`}
             >
               <Users className="w-4 h-4" />
-              Contacts
+              <span>Audience CRM</span>
             </button>
 
             <button
               onClick={() => setActiveTab('settings')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
                 activeTab === 'settings'
-                  ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
                   : 'hover:bg-slate-800 hover:text-white text-slate-400'
               }`}
             >
               <Settings className="w-4 h-4" />
-              Settings & API
+              <span>System & API</span>
             </button>
           </nav>
         </div>
 
-        <div className="pt-4 border-t border-slate-800 text-xs text-slate-500">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-            <span>Engine: Evolution Go</span>
+        {/* Sidebar Footer Info */}
+        <div className="pt-4 border-t border-slate-800 text-[11px] text-slate-500 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-slate-300 font-medium">Evolution Engine v2.0</span>
           </div>
-          <p>© 2026 WhatsFlow Multi-Account</p>
+          <div className="text-slate-500 font-mono text-[10px]">
+            Server: nakshtraventures.in/wa-api
+          </div>
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* MAIN VIEWPORT */}
       <main className="flex-1 flex flex-col overflow-y-auto">
-        {/* Top Header */}
-        <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between shadow-xs sticky top-0 z-10">
+        {/* TOP EXECUTIVE BAR */}
+        <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between shadow-xs sticky top-0 z-20">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-slate-900 capitalize">{activeTab}</h2>
+            <h2 className="text-base font-bold text-slate-900 capitalize">
+              {activeTab === 'chat'
+                ? 'Quick Messenger'
+                : activeTab === 'automations'
+                ? 'Rule Automations (Multi-Tenant)'
+                : activeTab === 'instances'
+                ? 'WhatsApp Account Lines'
+                : activeTab === 'contacts'
+                ? 'Audience & Borrower CRM'
+                : 'Platform Settings'}
+            </h2>
+
+            {/* License badge */}
             {license?.status && (
               <span
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                   license.status === 'active'
                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                     : 'bg-amber-50 text-amber-700 border border-amber-200'
@@ -276,65 +305,104 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            {license?.status === 'inactive' && (
-              <a
-                href={license?.register_url || 'http://localhost:8080/manager/login'}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg font-medium shadow-xs transition"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                Activate License
-              </a>
-            )}
-
+            {/* Refresh button */}
             <button
               onClick={fetchStatusAndInstances}
               className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
-              title="Refresh Data"
+              title="Refresh Engine Data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-500' : ''}`} />
             </button>
 
+            {/* Create new instance */}
             <button
               onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow-sm transition"
+              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3.5 py-2 rounded-xl shadow-sm transition"
             >
               <Plus className="w-4 h-4" />
-              New Instance
+              New Line
             </button>
+
+            {/* Admin User Profile Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center gap-2 p-1.5 pl-2.5 pr-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition text-xs font-semibold text-slate-700 border border-slate-200"
+              >
+                <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold">
+                  AS
+                </div>
+                <span className="hidden sm:inline">akshat.unt@gmail.com</span>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+
+              {/* Dropdown Menu */}
+              {showUserMenu && (
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-30 animate-in fade-in duration-100 text-xs">
+                  <div className="px-3 py-2 border-b border-slate-100 mb-1">
+                    <p className="font-bold text-slate-900">Akshat Sinha</p>
+                    <p className="text-[11px] text-slate-400 truncate">akshat.unt@gmail.com</p>
+                    <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                      Super Administrator
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUserMenu(false)
+                      setShowPasswordModal(true)
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 transition text-left font-medium"
+                  >
+                    <KeyRound className="w-4 h-4 text-emerald-600" />
+                    Change Password
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-rose-600 hover:bg-rose-50 transition text-left font-medium"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
-        {/* Dynamic Body */}
+        {/* VIEW CONTAINER */}
         <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
           {/* TAB 1: INSTANCES */}
           {activeTab === 'instances' && (
             <div className="space-y-6">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-xl font-bold text-slate-900">Connected Accounts</h3>
-                  <p className="text-sm text-slate-500">
-                    Manage multi-device WhatsApp accounts and session states.
+                  <h3 className="text-xl font-bold text-slate-900">Connected Accounts & Devices</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Multi-instance management running under isolated worker processes on DigitalOcean.
                   </p>
                 </div>
               </div>
 
               {instances.length === 0 ? (
-                <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center">
+                <div className="bg-white border-2 border-dashed border-slate-200 rounded-3xl p-12 text-center">
                   <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4">
                     <Smartphone className="w-8 h-8" />
                   </div>
-                  <h4 className="text-lg font-semibold text-slate-800 mb-1">No WhatsApp Instances Yet</h4>
-                  <p className="text-slate-500 text-sm max-w-md mx-auto mb-6">
-                    Connect your first WhatsApp account to start sending messages, automations, and tracking customer conversations.
+                  <h4 className="text-base font-bold text-slate-800 mb-1">No WhatsApp Lines Created</h4>
+                  <p className="text-slate-500 text-xs max-w-md mx-auto mb-6 leading-relaxed">
+                    Deploy your first WhatsApp phone instance to start sending notifications, transactional receipts, and auto-responders.
                   </p>
                   <button
                     onClick={() => setShowCreateModal(true)}
-                    className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg shadow-sm transition"
+                    className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-5 py-2.5 rounded-xl shadow-sm transition"
                   >
                     <Plus className="w-4 h-4" />
-                    Create Your First Instance
+                    Create WhatsApp Line
                   </button>
                 </div>
               ) : (
@@ -342,17 +410,19 @@ export default function App() {
                   {instances.map((inst) => (
                     <div
                       key={inst.id}
-                      className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition space-y-4"
+                      className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 hover:shadow-md transition-all space-y-4"
                     >
                       <div className="flex items-start justify-between">
                         <div>
-                          <h4 className="text-base font-bold text-slate-900">{inst.name}</h4>
-                          <p className="text-xs text-slate-500 font-mono mt-0.5">
-                            {inst.jid ? inst.jid.split('@')[0] : 'Unpaired Device'}
+                          <h4 className="text-base font-bold text-slate-900 tracking-tight">
+                            {inst.name}
+                          </h4>
+                          <p className="text-xs text-slate-400 font-mono mt-0.5">
+                            {inst.jid ? inst.jid.split('@')[0] : 'Unpaired Line'}
                           </p>
                         </div>
                         <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
                             inst.connected
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : 'bg-amber-50 text-amber-700 border border-amber-200'
@@ -360,47 +430,61 @@ export default function App() {
                         >
                           <span
                             className={`w-2 h-2 rounded-full ${
-                              inst.connected ? 'bg-emerald-500' : 'bg-amber-400 animate-ping'
+                              inst.connected ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'
                             }`}
-                          ></span>
-                          {inst.connected ? 'Connected' : 'QR Required'}
+                          />
+                          {inst.connected ? 'Online' : 'Pairing Required'}
                         </span>
                       </div>
 
-                      <div className="text-xs text-slate-400 space-y-1">
-                        <div>ID: <span className="font-mono text-slate-600">{inst.id.slice(0, 8)}...</span></div>
-                        <div>Created: <span className="text-slate-600">{inst.createdAt ? new Date(inst.createdAt).toLocaleDateString() : 'Active'}</span></div>
+                      <div className="text-[11px] text-slate-400 space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <div className="flex justify-between">
+                          <span>Token:</span>
+                          <span className="font-mono text-slate-700">{inst.token.slice(0, 16)}...</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Operating System:</span>
+                          <span className="text-slate-700 font-medium">{inst.os_name || 'WhatsFlow'}</span>
+                        </div>
                       </div>
 
                       <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                         {!inst.connected ? (
                           <button
-                            onClick={() => {
+                            type="button"
+                            onClick={async () => {
                               setSelectedInstanceForQr(inst)
                               setQrConnected(false)
                               setQrCodeData(inst.qrcode || '')
+                              try {
+                                await api.connectInstance(inst.token)
+                              } catch (e) {
+                                console.error(e)
+                              }
                             }}
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold py-2 px-3 rounded-lg transition"
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold py-2 px-3 rounded-xl transition"
                           >
                             <QrCode className="w-4 h-4" />
-                            Scan QR
+                            Pair WhatsApp QR
                           </button>
                         ) : (
                           <button
+                            type="button"
                             onClick={() => {
                               setSelectedInstanceToken(inst.token)
                               setActiveTab('chat')
                             }}
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-2 px-3 rounded-lg transition shadow-xs"
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-2 px-3 rounded-xl transition shadow-xs"
                           >
                             <Send className="w-3.5 h-3.5" />
-                            Send Message
+                            Open in Messenger
                           </button>
                         )}
 
                         <button
+                          type="button"
                           onClick={() => handleDeleteInstance(inst.id)}
-                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
                           title="Delete Instance"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -413,190 +497,77 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 2: MESSENGER */}
+          {/* TAB 2: QUICK MESSENGER */}
           {activeTab === 'chat' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 max-w-2xl mx-auto space-y-6">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Quick Messenger</h3>
-                <p className="text-sm text-slate-500">
-                  Send high-priority WhatsApp messages directly through connected accounts.
-                </p>
-              </div>
-
-              <form onSubmit={handleSendMessage} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
-                    Sender Account
-                  </label>
-                  <select
-                    value={selectedInstanceToken}
-                    onChange={(e) => setSelectedInstanceToken(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
-                    {instances.map((i) => (
-                      <option key={i.id} value={i.token}>
-                        {i.name} ({i.connected ? 'Connected' : 'Disconnected'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
-                    Recipient WhatsApp Number
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 15551234567 (with country code)"
-                    value={targetNumber}
-                    onChange={(e) => setTargetNumber(e.target.value)}
-                    required
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                  <p className="text-xs text-slate-400 mt-1">Include country code without + or spaces.</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
-                    Message Body
-                  </label>
-                  <textarea
-                    rows={4}
-                    placeholder="Type your message here..."
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                    required
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-
-                {sendResult && (
-                  <div
-                    className={`p-3 rounded-lg text-sm flex items-center gap-2 ${
-                      sendResult.success
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-rose-50 text-rose-700 border border-rose-200'
-                    }`}
-                  >
-                    {sendResult.success ? (
-                      <CheckCircle2 className="w-4 h-4 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 shrink-0" />
-                    )}
-                    <span>{sendResult.msg}</span>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={sendingMessage || instances.length === 0}
-                  className="w-full inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-semibold py-3 px-4 rounded-xl shadow-sm transition"
-                >
-                  <Send className="w-4 h-4" />
-                  {sendingMessage ? 'Sending...' : 'Dispatch Message'}
-                </button>
-              </form>
-            </div>
+            <QuickMessenger
+              instances={instances}
+              selectedToken={selectedInstanceToken}
+              onSelectToken={setSelectedInstanceToken}
+            />
           )}
 
-          {/* TAB 3: AUTOMATIONS */}
-          {activeTab === 'automations' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Rule-Based Automations</h3>
-                <p className="text-sm text-slate-500">
-                  Instant auto-responders that reply when customers send specific keywords.
-                </p>
-              </div>
+          {/* TAB 3: RULE AUTOMATIONS */}
+          {activeTab === 'automations' && <RuleAutomations instances={instances} />}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {automations.map((rule) => (
-                  <div key={rule.id} className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono bg-slate-100 text-emerald-700 font-bold px-2.5 py-1 rounded-md text-xs">
-                        MATCH: "{rule.keyword}"
-                      </span>
-                      <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-medium">
-                        Active
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-600">{rule.reply}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Add New Rule */}
-              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs max-w-xl">
-                <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-emerald-600" />
-                  Add Quick Keyword Auto-Responder
-                </h4>
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    placeholder="Trigger keyword (e.g. DISCOUNT)"
-                    value={newKeyword}
-                    onChange={(e) => setNewKeyword(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  />
-                  <textarea
-                    rows={2}
-                    placeholder="Automated response message..."
-                    value={newReply}
-                    onChange={(e) => setNewReply(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  />
-                  <button
-                    onClick={() => {
-                      if (!newKeyword.trim() || !newReply.trim()) return
-                      setAutomations([...automations, { id: Date.now().toString(), keyword: newKeyword.toUpperCase(), reply: newReply, enabled: true }])
-                      setNewKeyword('')
-                      setNewReply('')
-                    }}
-                    className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-lg"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Save Rule
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: CONTACTS */}
+          {/* TAB 4: AUDIENCE & BORROWER CRM */}
           {activeTab === 'contacts' && (
             <div className="space-y-6">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Contact CRM & Opt-Ins</h3>
-                <p className="text-sm text-slate-500">
-                  Manage audience segments, tag VIPs, and respect consent & opt-out status.
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Audience & Contact CRM</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Manage borrowers, VIP clients, customer opt-ins, and recipient tags.
+                  </p>
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <input
+                    type="text"
+                    value={contactSearch}
+                    onChange={(e) => setContactSearch(e.target.value)}
+                    placeholder="Search by name or number..."
+                    className="w-full bg-white border border-slate-200 rounded-xl pl-3.5 pr-4 py-2 text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
               </div>
 
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-                <table className="w-full text-left border-collapse text-sm">
+              <div className="bg-white border border-slate-200 rounded-3xl shadow-xs overflow-hidden">
+                <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase font-semibold text-slate-500">
-                      <th className="py-3 px-6">Name</th>
-                      <th className="py-3 px-6">WhatsApp Phone</th>
-                      <th className="py-3 px-6">Tag</th>
-                      <th className="py-3 px-6">Consent</th>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
+                      <th className="py-3.5 px-6">Customer / Borrower</th>
+                      <th className="py-3.5 px-6">Phone Number</th>
+                      <th className="py-3.5 px-6">Segment Tag</th>
+                      <th className="py-3.5 px-6">Status</th>
+                      <th className="py-3.5 px-6 text-right">Quick Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {contacts.map((c) => (
-                      <tr key={c.id} className="hover:bg-slate-50 transition">
-                        <td className="py-3.5 px-6 font-medium text-slate-800">{c.name}</td>
-                        <td className="py-3.5 px-6 font-mono text-slate-600 text-xs">{c.phone}</td>
-                        <td className="py-3.5 px-6">
-                          <span className="bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full text-xs font-medium">
+                    {filteredContacts.map((c) => (
+                      <tr key={c.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-4 px-6 font-semibold text-slate-900">{c.name}</td>
+                        <td className="py-4 px-6 font-mono text-slate-600">{c.phone}</td>
+                        <td className="py-4 px-6">
+                          <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md text-[11px] font-semibold">
                             {c.tag}
                           </span>
                         </td>
-                        <td className="py-3.5 px-6">
-                          <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Opted In
+                        <td className="py-4 px-6">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            {c.status}
                           </span>
+                        </td>
+                        <td className="py-4 px-6 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab('chat')
+                            }}
+                            className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold inline-flex items-center gap-1"
+                          >
+                            <Send className="w-3 h-3" />
+                            Message
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -606,55 +577,59 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 5: SETTINGS */}
+          {/* TAB 5: SYSTEM & API SETTINGS */}
           {activeTab === 'settings' && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-xl shadow-xs space-y-6">
+            <div className="bg-white border border-slate-200 rounded-3xl p-8 max-w-2xl shadow-xs space-y-6">
               <div>
                 <h3 className="text-xl font-bold text-slate-900">Platform & API Configuration</h3>
-                <p className="text-sm text-slate-500">
-                  Configure your backend server URL and API credentials.
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Secure droplet communication endpoints and Evolution Foundation API credentials.
                 </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
-                  Backend Server URL
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. http://146.190.11.227:8080"
-                  value={apiUrlInput}
-                  onChange={(e) => setApiUrlInput(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <p className="text-xs text-slate-400 mt-1">
-                  Default: <span className="font-mono">http://146.190.11.227:8080</span> (Your DigitalOcean droplet)
-                </p>
-              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                    Backend HTTPS Server URL
+                  </label>
+                  <input
+                    type="text"
+                    value={apiUrlInput}
+                    onChange={(e) => setApiUrlInput(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-mono text-slate-800 focus:outline-none focus:border-emerald-500"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Production Droplet Route: <span className="font-mono text-slate-600">https://nakshtraventures.in/wa-api</span>
+                  </p>
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
-                  Global API Key
-                </label>
-                <input
-                  type="text"
-                  value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                    Global Engine API Key
+                  </label>
+                  <input
+                    type="text"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-mono text-slate-800 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
 
-              <button
-                onClick={() => {
-                  setApiKey(apiKeyInput.trim())
-                  setApiBaseUrl(apiUrlInput.trim())
-                  alert('Settings updated successfully!')
-                  fetchStatusAndInstances()
-                }}
-                className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm py-2.5 px-4 rounded-xl shadow-sm transition"
-              >
-                Save Settings
-              </button>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setApiKey(apiKeyInput.trim())
+                      setApiBaseUrl(apiUrlInput.trim())
+                      alert('API settings saved successfully!')
+                      fetchStatusAndInstances()
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs py-2.5 px-5 rounded-xl shadow-sm transition"
+                  >
+                    Save API Configuration
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -662,45 +637,45 @@ export default function App() {
 
       {/* CREATE INSTANCE MODAL */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
             <div>
-              <h4 className="text-lg font-bold text-slate-900">Create WhatsApp Account</h4>
-              <p className="text-xs text-slate-500 mt-1">
-                Name your instance to identify which number or department it belongs to.
+              <h4 className="text-lg font-bold text-slate-900">Create New WhatsApp Line</h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Assign a dedicated phone line to a team or customer care department.
               </p>
             </div>
 
             <form onSubmit={handleCreateInstance} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
-                  Instance Name
+                  Instance Name / ID
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. sales-team, support, personal"
+                  placeholder="e.g. nbfc-support, collections-line"
                   value={newInstanceName}
                   onChange={(e) => setNewInstanceName(e.target.value)}
                   required
                   autoFocus
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-2">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={creating}
-                  className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-sm transition disabled:opacity-50"
                 >
-                  {creating ? 'Creating...' : 'Create & Pair QR'}
+                  {creating ? 'Creating Line...' : 'Create & Generate QR'}
                 </button>
               </div>
             </form>
@@ -710,12 +685,12 @@ export default function App() {
 
       {/* QR PAIRING MODAL */}
       {selectedInstanceForQr && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-8 text-center space-y-6 animate-in fade-in zoom-in-95 duration-150">
             <div>
               <h4 className="text-xl font-bold text-slate-900">Pair WhatsApp Web</h4>
               <p className="text-xs text-slate-500 mt-1">
-                Instance: <span className="font-semibold text-slate-700">{selectedInstanceForQr.name}</span>
+                Line Name: <span className="font-semibold text-slate-700">{selectedInstanceForQr.name}</span>
               </p>
             </div>
 
@@ -729,6 +704,7 @@ export default function App() {
                   Your WhatsApp account is now linked and persistent.
                 </p>
                 <button
+                  type="button"
                   onClick={() => {
                     setSelectedInstanceForQr(null)
                     fetchStatusAndInstances()
@@ -772,8 +748,9 @@ export default function App() {
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => setSelectedInstanceForQr(null)}
-                  className="w-full py-2.5 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition"
+                  className="w-full py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition"
                 >
                   Close
                 </button>
@@ -782,7 +759,12 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* CHANGE PASSWORD MODAL */}
+      <ChangePasswordModal
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+      />
     </div>
   )
 }
-
