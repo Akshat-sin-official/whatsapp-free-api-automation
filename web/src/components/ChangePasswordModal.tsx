@@ -135,3 +135,4 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
     </div>
   )
 }
+

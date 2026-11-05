@@ -481,3 +481,4 @@ export const RuleAutomations: React.FC<RuleAutomationsProps> = ({ instances }) =
     </div>
   )
 }
+
